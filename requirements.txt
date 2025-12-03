@@ -1,46 +1,26 @@
-python-multipart
-datasets
-python-dotenv
-openai
-beir
-langchain-text-splitters
-numpy
-# Core ML libraries
-torch
-transformers
-sentence-transformers
-
-# for chunking
-
-tiktoken
-
-# Vector search and embeddings
-faiss-cpu
-# faiss-gpu>=1.7.4  # uncomment if using GPU
-
-# NLP and text processing
-# nltk
-# spacy
-
-# Data processing
-# numpy
-# pandas
-
-# API framework (if needed)
+pinecone-client
+# FastAPI and server
 fastapi
-uvicorn
-# pydantic
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-multipart
 
-# Document processing
-# pypdf
-# python-docx
-# python-pptx
+# Vector database
+pinecone
+
+# Embeddings
+openai
 
 # Utilities
-# python-dotenv>=1.0.0
-# tqdm>=4.65.0
-# requests>=2.31.0
+python-dotenv
+requests
 
-# Testing
-# pytest>=7.4.0
-# pytest-cov>=4.1.0
+# Metadata database (PostgreSQL)
+sqlalchemy
+psycopg2-binary
+alembic
+
+# Testing (optional)
+pytest
+httpx
