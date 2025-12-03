@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rag_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conference_db
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d conference_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RAG API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+      # Pinecone
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_CLOUD: ${PINECONE_CLOUD:-aws}
+      PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-us-east-1}
+      PINECONE_INDEX_NAME: ${PINECONE_INDEX_NAME:-conference-calls}
+      PINECONE_SUMMARIES_INDEX_NAME: ${PINECONE_SUMMARIES_INDEX_NAME:-conference-summaries}
+
+      # Embeddings
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-text-embedding-3-large}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-1536}
+
+      # Database
+      DATABASE_URL: postgresql://raguser:ragpassword@postgres:5432/conference_db
+      DATABASE_ECHO: ${DATABASE_ECHO:-false}
+
+      # Agent settings
+      MAX_ITERATIONS: ${MAX_ITERATIONS:-5}
+      DEFAULT_TOP_K: ${DEFAULT_TOP_K:-10}
+      MIN_RELEVANCE_SCORE: ${MIN_RELEVANCE_SCORE:-0.7}
+
+      # API settings
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_RELOAD: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app:ro
+      - ./main.py:/app/main.py:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
