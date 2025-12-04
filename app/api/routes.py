@@ -533,14 +533,15 @@ async def clear_all_databases():
                 # Delete from vector DB (both indices)
                 vector_db.delete_by_call_id(call.call_id, index_type="chunks")
                 vector_db.delete_by_call_id(call.call_id, index_type="summaries")
-                vector_db.delete_all(index_type="chunks")
-                vector_db.delete_all(index_type="summaries")
+
 
                 # Delete from PostgreSQL
                 main_db.delete_call(call.call_id)
                 deleted_count += 1
             except Exception as e:
                 errors.append(f"Failed to delete {call.call_id}: {str(e)}")
+        vector_db.delete_all(index_type="chunks")
+        vector_db.delete_all(index_type="summaries")
 
         # Verify deletion
         stats_after = main_db.get_stats()
