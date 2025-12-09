@@ -5,7 +5,7 @@ FastAPI application
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import router
+from app.api.routes_prod import router
 from app import __version__
 
 # Create FastAPI app

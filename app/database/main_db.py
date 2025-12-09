@@ -203,7 +203,7 @@ if __name__ == "__main__":
         # Test create
         print(f"\n🧪 Testing create operation...")
         test_call = db.create_call(
-            call_id="test-call-001",
+            call_id="test-call-00",
             full_transcript="Alice: Hello everyone. Bob: Hi Alice. This is a test transcript.",
             summary="Test call to verify database operations",
             date=datetime.now(),
