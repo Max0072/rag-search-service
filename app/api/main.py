@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 # Include routes
-app.include_router(router, prefix="/api")
+app.include_router(router, prefix="")
 app.include_router(admin_router, prefix="/admin")
 
 # Root endpoint
@@ -53,5 +53,13 @@ async def root():
         "name": "Conference Call Search API",
         "version": __version__,
         "docs": "/docs",
-        "health": "/api/v1/health"
+        "health": "/health"
     }
+
+
+ # - allow_origins=["*"] - разрешает запросы с любых доменов
+ #    - ⚠️ Небезопасно для production! Любой сайт сможет делать запросы к вашему API
+ #    - Для production нужно указать конкретные домены: ["https://yourapp.com", "https://www.yourapp.com"]
+ #  - allow_credentials=True - разрешает отправку cookies и авторизационных заголовков
+ #  - allow_methods=["*"] - разрешает все HTTP методы (GET, POST, PUT, DELETE и т.д.)
+ #  - allow_headers=["*"] - разрешает все HTTP заголовки
