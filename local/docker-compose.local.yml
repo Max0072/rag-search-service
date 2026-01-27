@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: rag_postgres_local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conference_db
+      POSTGRES_USER: raguser
+      POSTGRES_PASSWORD: ragpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U raguser -d conference_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RAG API Service
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: rag_api_local
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.local
+    environment:
+      # Database (auto-connect to postgres container)
+      DATABASE_URL: postgresql://raguser:ragpassword@postgres:5432/conference_db
+      DATABASE_ECHO: false
+
+      # API settings
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+      API_RELOAD: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_local_data:
