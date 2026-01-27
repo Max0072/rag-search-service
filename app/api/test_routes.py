@@ -22,7 +22,7 @@ from app.models import (
 )
 from app import __version__
 from app.search.search_engine import get_search_engine
-from app.database.embeddings import get_embedding_service
+from app.embeddings.embeddings import get_embedding_service
 from app.database.vector_db import get_vector_db
 from app.database.main_db import get_main_db
 from app.data_manager import get_data_manager

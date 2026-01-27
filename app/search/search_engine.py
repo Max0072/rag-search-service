@@ -11,7 +11,7 @@ from datetime import datetime
 from app.models import SearchFilter, ChunkResult
 from app.database.vector_db import get_vector_db
 from app.database.main_db import get_main_db
-from app.database.embeddings import get_embedding_service
+from app.embeddings.embeddings import get_embedding_service
 
 
 class SearchEngine:
