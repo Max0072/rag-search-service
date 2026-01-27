@@ -15,7 +15,7 @@ import re
 
 from app.database.main_db import get_main_db
 from app.database.vector_db import get_vector_db
-from app.embeddings.embeddings import get_embedding_service
+from app.embeddings.openai_embeddings import get_embedding_service
 from app.config import get_settings
 
 settings = get_settings()
