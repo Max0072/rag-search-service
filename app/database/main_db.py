@@ -14,18 +14,6 @@ from app.config import get_settings
 settings = get_settings()
 
 
-
-# 1)    init_db()
-# 2)    get_session()
-# 3)    create_call()
-# 4)    get_call()
-# 5)    get_calls()
-# 6)    update_call()
-# 7)    delete_call()
-# 8)    get_stats()
-
-
-
 class MetadataDatabase:
     """PostgreSQL database for storing complete call metadata"""
 
