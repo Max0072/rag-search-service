@@ -30,9 +30,7 @@ class Call(Base):
     # Metadata
     date = Column(DateTime, nullable=False, index=True)
     attendants = Column(ARRAY(String), nullable=True, index=True)
-    topic = Column(String, nullable=True)
-    meeting_type = Column(String, nullable=True, index=True)
-    duration_minutes = Column(Integer, nullable=True)
+
 
     # Additional metadata (flexible JSON field)
     meta = Column(JSON, nullable=True, default={})
@@ -60,9 +58,6 @@ class Call(Base):
             "summary": self.summary,
             "date": self.date.isoformat() if self.date else None,
             "attendants": self.attendants,
-            "topic": self.topic,
-            "meeting_type": self.meeting_type,
-            "duration_minutes": self.duration_minutes,
             "meta": self.meta,
             "chunks_count": self.chunks_count,
             "created_at": self.created_at.isoformat() if self.created_at else None,

@@ -3,7 +3,7 @@ Metadata database (PostgreSQL) integration
 """
 
 from typing import List, Optional, Dict, Any
-from sqlalchemy import create_engine, and_, or_
+from sqlalchemy import create_engine, or_
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import SQLAlchemyError
 from datetime import datetime
@@ -60,8 +60,7 @@ class MetadataDatabase:
         session = self.get_session()
         try:
             call = Call(call_id=call_id, full_transcript=full_transcript, summary=summary,
-                        date=date, attendants=attendants, topic=topic, meeting_type=meeting_type,
-                        duration_minutes=duration_minutes, meta=meta or {},
+                        date=date, attendants=attendants, meta=meta or {},
                         chunks_count=chunks_count, processed_at=datetime.now()
             )
             session.add(call)
@@ -107,8 +106,6 @@ class MetadataDatabase:
             if attendants:
                 attendant_filters = [Call.attendants.contains([name]) for name in attendants]
                 query = query.filter(or_(*attendant_filters))
-            if meeting_type:
-                query = query.filter(Call.meeting_type == meeting_type)
             # query = query.order_by(Call.date.desc())
             query = query.limit(limit).offset(offset)
             return query.all()
@@ -224,7 +221,6 @@ if __name__ == "__main__":
         retrieved_call = db.get_call("test-call-001")
         if retrieved_call:
             print(f"✅ Retrieved call: {retrieved_call.call_id}")
-            print(f"   Topic: {retrieved_call.topic}")
             print(f"   Attendants: {retrieved_call.attendants}")
         else:
             print(f"❌ Failed to retrieve call")
