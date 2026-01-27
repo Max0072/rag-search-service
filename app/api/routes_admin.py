@@ -28,11 +28,11 @@ from app.database.main_db import get_main_db
 from app.data_manager import get_data_manager
 from app.config import get_settings
 
-router = APIRouter()
+admin_router = APIRouter()
 settings = get_settings()
 
 
-@router.get("/health", response_model=HealthResponse)
+@admin_router.get("/health", response_model=HealthResponse)
 async def health_check():
     """
     Health check endpoint
@@ -44,7 +44,7 @@ async def health_check():
     )
 
 
-@router.post("/search", response_model=SearchResponse)
+@admin_router.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
     """
     Main search endpoint
@@ -98,7 +98,7 @@ async def search(request: SearchRequest):
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
 
-@router.post("/embed", response_model=EmbedResponse)
+@admin_router.post("/embed", response_model=EmbedResponse)
 async def create_embedding(request: EmbedRequest):
     """
     Generate embedding for text
@@ -130,7 +130,7 @@ async def create_embedding(request: EmbedRequest):
         raise HTTPException(status_code=500, detail=f"Embedding generation failed: {str(e)}")
 
 
-@router.get("/stats", response_model=StatsResponse)
+@admin_router.get("/stats", response_model=StatsResponse)
 async def get_stats():
     """
     Get database statistics
@@ -166,7 +166,7 @@ async def get_stats():
         raise HTTPException(status_code=500, detail=f"Failed to get stats: {str(e)}")
 
 
-@router.post("/calls", response_model=CallResponse, status_code=201)
+@admin_router.post("/calls", response_model=CallResponse, status_code=201)
 async def create_call(request: CreateCallRequest):
     """
     Create a new call record and index it
@@ -235,7 +235,7 @@ async def create_call(request: CreateCallRequest):
         raise HTTPException(status_code=500, detail=f"Failed to create call: {str(e)}")
 
 
-@router.get("/calls/{call_id}", response_model=CallResponse)
+@admin_router.get("/calls/{call_id}", response_model=CallResponse)
 async def get_call(call_id: str):
     """
     Get call details by ID
@@ -275,7 +275,7 @@ async def get_call(call_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to get call: {str(e)}")
 
 
-@router.get("/calls", response_model=CallListResponse)
+@admin_router.get("/calls", response_model=CallListResponse)
 async def list_calls(limit: int = 10, offset: int = 0):
     """
     List all calls with pagination
@@ -331,7 +331,7 @@ async def list_calls(limit: int = 10, offset: int = 0):
         raise HTTPException(status_code=500, detail=f"Failed to list calls: {str(e)}")
 
 
-@router.post("/upload_json", status_code=201)
+@admin_router.post("/upload_json", status_code=201)
 async def upload_json(request: Request, file: Optional[UploadFile] = File(None)):
     """
     Upload calls from JSON file or JSON body
@@ -435,7 +435,7 @@ async def upload_json(request: Request, file: Optional[UploadFile] = File(None))
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@router.delete("/calls/{call_id}", status_code=200)
+@admin_router.delete("/calls/{call_id}", status_code=200)
 async def delete_call(call_id: str):
     """
     Delete a call by ID
@@ -466,7 +466,7 @@ async def delete_call(call_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to delete call: {str(e)}")
 
 
-@router.post("/admin/init-db", status_code=200)
+@admin_router.post("/admin/init-db", status_code=200)
 async def initialize_database():
     """
     Initialize database tables
@@ -497,7 +497,39 @@ async def initialize_database():
         raise HTTPException(status_code=500, detail=f"Failed to initialize database: {str(e)}")
 
 
-@router.delete("/admin/clear-all", status_code=200)
+@admin_router.post("/admin/init-db", status_code=200)
+async def initialize_database():
+    """
+    Initialize database tables
+
+    Creates all necessary tables in PostgreSQL if they don't exist.
+    Safe to run multiple times - will not affect existing data.
+
+    **Returns:**
+    - Success message with created tables
+    """
+    try:
+        main_db = get_main_db()
+
+        # Initialize database (creates tables if they don't exist)
+        main_db.init_db()
+
+        # Get stats to verify
+        stats = main_db.get_stats()
+
+        return {
+            "message": "Database initialized successfully",
+            "tables_created": ["calls"],
+            "total_calls": stats.get("total_calls", 0),
+            "status": "ready"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to initialize database: {str(e)}")
+
+
+
+@admin_router.delete("/admin/clear-all", status_code=200)
 async def clear_all_databases():
     """
     Clear all databases (PostgreSQL and Pinecone)
@@ -559,5 +591,4 @@ async def clear_all_databases():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to clear databases: {str(e)}")
-
 

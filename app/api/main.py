@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes_prod import router
+from app.api.routes_admin import admin_router
 from app import __version__
 
 # Create FastAPI app
@@ -42,7 +43,8 @@ app.add_middleware(
 )
 
 # Include routes
-app.include_router(router, prefix="/api/v1")
+app.include_router(router, prefix="/api")
+app.include_router(admin_router, prefix="/admin")
 
 # Root endpoint
 @app.get("/")
