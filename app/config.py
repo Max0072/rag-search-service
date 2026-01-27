@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     api_reload: bool = True
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file="local/.env.local",
         case_sensitive=False,
         extra="ignore"
     )

@@ -31,6 +31,7 @@ async def startup_event():
         print(f"⚠️  Warning: Database initialization failed: {e}")
         # Don't fail startup, just log the warning
 
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
