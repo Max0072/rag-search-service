@@ -15,19 +15,38 @@ from prompts import (
     INITIAL_SEARCH_PROMPT, EVALUATE_DECIDE_PROMPT, GENERATE_ANSWER_PROMPT
 )
 
+# ============================================================
+# GLOBAL STATE для Dashboard (real-time в памяти)
+# ============================================================
+CURRENT_CHAT_STATE = {}
+CURRENT_SEARCH_STATE = {}
 
-# State
-class AgentState(TypedDict):
-    user_query: str
-    chat_id: int
+
+# ============================================================
+# LEVEL 2: Search Agent State (одноразовый для каждого поиска)
+# ============================================================
+class SearchState(TypedDict):
+    search_query: str
+    messages: List[dict]
     iteration_count: int
     max_iterations: int
-    search_history: Annotated[List[dict], operator.add]
-    accumulated_results: Annotated[List[dict], operator.add]
+    search_history: List[dict]  # БЕЗ operator.add - одноразовый
+    accumulated_results: List[dict]  # БЕЗ operator.add - одноразовый
+    search_list: List[dict]  # Хронология: [{"type": "user_message"|"model_answer"|"search_result", "content": ...}]
     action: str
     reasoning: str
     search_request: dict
     final_answer: str
+    answer: str
+
+
+# ============================================================
+# LEVEL 1: Chat Agent State (долгоживущий для диалога)
+# ============================================================
+class ChatState(TypedDict):
+    user_query: str
+    chat_id: int
+    messages: Annotated[List[dict], operator.add]  # Формат для LLM: [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
 
 
 # OpenRouter client
@@ -92,11 +111,14 @@ async def call_rag_api(search_request: dict) -> dict:
         return response.json()
 
 
-# Nodes
-def plan_initial_search(state: AgentState) -> dict:  # type: ignore
+# ============================================================
+# SEARCH AGENT NODES (Level 2)
+# ============================================================
+def plan_initial_search(state: SearchState) -> dict:  # type: ignore
+    global CURRENT_SEARCH_STATE
     print(state)
     """Claude планирует первый поиск"""
-    user_message = (f"Запрос пользователя: {state['user_query']}\n"
+    user_message = (f"Запрос пользователя: {state['search_query']}\n"
                     f"Текущая дата: {datetime.now().strftime('%Y-%m-%d')}")
 
     print(f"------------ User message ------------\n"
@@ -111,20 +133,52 @@ def plan_initial_search(state: AgentState) -> dict:  # type: ignore
 
     parsed = parse_json_response(response)
 
-    return {
+    # Создаем search_list записи
+    search_list = state.get("search_list", [])
+    search_list.append({
+        "type": "user_message",
+        "content": state['search_query']
+    })
+    search_list.append({
+        "type": "model_answer",
+        "content": f"Action: {parsed.get('action', 'answer')}\nReasoning: {parsed.get('reasoning', '')}"
+    })
+
+    result = {
         "action": parsed.get("action", "answer"),
         "reasoning": parsed.get("reasoning", ""),
         "search_request": parsed.get("search_request"),
-        "iteration_count": 1
+        "iteration_count": 1,
+        "search_list": search_list,
+        "answer": parsed.get("answer", ""),
     }
 
+    # Обновляем глобальный state для dashboard
+    CURRENT_SEARCH_STATE.update(state)
+    CURRENT_SEARCH_STATE.update(result)
 
-async def execute_search(state: AgentState) -> dict:  # type: ignore
+    return result
+
+
+async def execute_search(state: SearchState) -> dict:  # type: ignore
+    global CURRENT_SEARCH_STATE
     print(state)
     """Выполняет поиск через RAG API"""
+
+    # Добавляем в search_list запрос к API
+    search_list = state.get("search_list", [])
+    search_list.append({
+        "type": "api_request",
+        "content": json.dumps(state["search_request"], ensure_ascii=False, indent=2)
+    })
+
     result = await call_rag_api(state["search_request"])
 
     results = result.get("results", [])
+
+    print(f"------------ Search results ------------\n"
+          f"{result}\n"
+          f"----------------------------------------\n")
 
     # Дедупликация
     existing_ids = {
@@ -137,21 +191,53 @@ async def execute_search(state: AgentState) -> dict:  # type: ignore
         if (r.get("call_id"), r.get("chunk_text", r.get("summary", ""))) not in existing_ids
     ]
 
-    return {
-        "accumulated_results": new_results,
-        "search_history": [{
-            "iteration": state["iteration_count"],
-            "search_params": state["search_request"],
-            "total_found": len(results),
-            "avg_score": result.get("avg_score", 0)
-        }]
+    # Добавляем к существующим результатам (вручную, без operator.add)
+    updated_results = state.get("accumulated_results", []) + new_results
+    updated_history = state.get("search_history", []) + [{
+        "iteration": state["iteration_count"],
+        "search_params": state["search_request"],
+        "total_found": len(results),
+        "avg_score": result.get("avg_score", 0)
+    }]
+
+    # Добавляем в search_list
+    search_list = state.get("search_list", [])
+
+    # Формируем краткое описание найденных результатов
+    results_preview = ""
+    for i, r in enumerate(new_results[:3], 1):  # Показываем топ-3
+        call_id = r.get("call_id", "unknown")
+        summary = r.get("summary", "")[:150] if r.get("summary") else ""
+        chunk = r.get("chunk_text", "")[:150] if r.get("chunk_text") else ""
+        content = summary or chunk or "No content"
+        results_preview += f"\n{i}. [{call_id}] {content}..."
+
+    if len(new_results) > 3:
+        results_preview += f"\n... и еще {len(new_results) - 3} результатов"
+
+    search_list.append({
+        "type": "search_result",
+        "content": f"Found: {len(results)} results | Avg score: {result.get('avg_score', 0):.3f} | New: {len(new_results)}{results_preview}"
+    })
+
+    result_dict = {
+        "accumulated_results": updated_results,
+        "search_history": updated_history,
+        "search_list": search_list
     }
 
+    # Обновляем глобальный state для dashboard
+    CURRENT_SEARCH_STATE.update(state)
+    CURRENT_SEARCH_STATE.update(result_dict)
 
-def evaluate_and_decide(state: AgentState) -> dict:  # type: ignore
+    return result_dict
+
+
+def evaluate_and_decide(state: SearchState) -> dict:  # type: ignore
+    global CURRENT_SEARCH_STATE
     print(state)
     """Claude решает: search или answer"""
-    user_message = f"""Запрос пользователя: {state['user_query']}
+    user_message = f"""Запрос пользователя: {state['search_query']}
 
 Итерация: {state['iteration_count']}/{state['max_iterations']}
 
@@ -160,8 +246,8 @@ def evaluate_and_decide(state: AgentState) -> dict:  # type: ignore
 
 Накоплено результатов: {len(state.get('accumulated_results', []))}
 
-Топ-3 результата:
-{json.dumps(state.get('accumulated_results', [])[:3], ensure_ascii=False, indent=2)}
+Результаты:
+{json.dumps(state.get('accumulated_results', [])[:-1], ensure_ascii=False, indent=2)}
 
 Что делать: search или answer?"""
 
@@ -176,17 +262,54 @@ def evaluate_and_decide(state: AgentState) -> dict:  # type: ignore
 
     parsed = parse_json_response(response)
 
-    return {
+    # Добавляем в search_list
+    search_list = state.get("search_list", [])
+    search_list.append({
+        "type": "model_answer",
+        "content": f"Action: {parsed.get('action', 'answer')}\nReasoning: {parsed.get('reasoning', '')}"
+    })
+
+    result = {
         "action": parsed.get("action", "answer"),
         "reasoning": parsed.get("reasoning", ""),
         "search_request": parsed.get("search_request"),
-        "iteration_count": state["iteration_count"] + 1
+        "iteration_count": state["iteration_count"] + 1,
+        "search_list": search_list,
+        "answer": parsed.get("answer", "")
     }
 
+    # Обновляем глобальный state для dashboard
+    CURRENT_SEARCH_STATE.update(state)
+    CURRENT_SEARCH_STATE.update(result)
 
-def generate_answer(state: AgentState) -> dict:  # type: ignore
+    return result
+
+def just_answer(state: SearchState) -> dict:
+
+    response = state.get('answer', 'не указана')
+    # Добавляем в search_list полный финальный ответ
+    search_list = state.get("search_list", [])
+    search_list.append({
+        "type": "final_answer",
+        "content": response
+    })
+
+    result = {
+        "final_answer": response,
+        "search_list": search_list
+    }
+
+    # Обновляем глобальный state для dashboard
+    CURRENT_SEARCH_STATE.update(state)
+    CURRENT_SEARCH_STATE.update(result)
+
+    return result
+
+
+def generate_answer(state: SearchState) -> dict:  # type: ignore
+    global CURRENT_SEARCH_STATE
     """Claude генерирует финальный ответ"""
-    user_message = f"""Запрос: {state['user_query']}
+    user_message = f"""Запрос: {state['search_query']}
 
 Reasoning: {state.get('reasoning', 'не указана')}
 
@@ -194,6 +317,7 @@ Reasoning: {state.get('reasoning', 'не указана')}
 {json.dumps(state.get('accumulated_results', []), ensure_ascii=False, indent=2)}
 
 Сформируй структурированный ответ."""
+
     print(f"------------ User message ------------\n"
           f"{user_message}\n"
           f"--------------------------------------\n")
@@ -204,11 +328,27 @@ Reasoning: {state.get('reasoning', 'не указана')}
           f"{response}\n"
           f"--------------------------------------\n")
 
-    return {"final_answer": response}
+    # Добавляем в search_list полный финальный ответ
+    search_list = state.get("search_list", [])
+    search_list.append({
+        "type": "final_answer",
+        "content": response
+    })
+
+    result = {
+        "final_answer": response,
+        "search_list": search_list
+    }
+
+    # Обновляем глобальный state для dashboard
+    CURRENT_SEARCH_STATE.update(state)
+    CURRENT_SEARCH_STATE.update(result)
+
+    return result
 
 
-# Conditional edge
-def should_continue(state: AgentState) -> str:
+# Conditional edge для Search Agent
+def should_continue_search(state: SearchState) -> str:
     """Решает: search или answer"""
     if (state.get("action") == "search" and
         state.get("iteration_count", 0) < state.get("max_iterations", MAX_ITERATIONS)):
@@ -216,43 +356,137 @@ def should_continue(state: AgentState) -> str:
     return "answer"
 
 
-# Build graph
-def build_graph():
-    workflow = StateGraph(AgentState)  # type: ignore
+# ============================================================
+# BUILD SEARCH AGENT (Level 2 - одноразовый)
+# ============================================================
+def build_search_agent():
+    """Граф для итеративного поиска - БЕЗ памяти"""
+    workflow = StateGraph(SearchState)  # type: ignore
 
     # Nodes
     workflow.add_node("plan_initial", plan_initial_search) # type: ignore
     workflow.add_node("execute_search", execute_search) # type: ignore
     workflow.add_node("evaluate", evaluate_and_decide) # type: ignore
     workflow.add_node("generate_answer", generate_answer) # type: ignore
+    workflow.add_node("just_answer", just_answer) # type: ignore
 
     # Edges
     workflow.set_entry_point("plan_initial")
-    # workflow.add_edge("plan_initial", "execute_search")
     workflow.add_conditional_edges(
         "plan_initial",
-        should_continue,
+        should_continue_search,
         {
             "search": "execute_search",
-            "answer": "generate_answer"
+            "answer": "just_answer"
         }
     )
     workflow.add_edge("execute_search", "evaluate")
     workflow.add_conditional_edges(
         "evaluate",
-        should_continue,
+        should_continue_search,
         {
             "search": "execute_search",
-            "answer": "generate_answer"
+            "answer": "just_answer"
         }
     )
     workflow.add_edge("generate_answer", END)
 
-    # Compile with memory
+    # Compile БЕЗ checkpointer - одноразовый state
+    return workflow.compile()
+
+
+
+# ============================================================
+# BUILD CHAT AGENT (Level 1 - долгоживущий)
+# ============================================================
+def build_chat_agent():
+    """Граф для диалога с пользователем - С памятью"""
+    workflow = StateGraph(ChatState)  # type: ignore
+
+    # Создаем экземпляр search_agent
+    search_agent = build_search_agent()
+
+    async def run_search(state: ChatState) -> dict:  # type: ignore
+        global CURRENT_CHAT_STATE, CURRENT_SEARCH_STATE
+        """Запускает Search Agent для поиска ответа"""
+
+        CURRENT_CHAT_STATE.update({
+            "user_query": state["user_query"],
+            "chat_id": state["chat_id"],
+            "messages": state.get("messages", []),
+        })
+
+        # Очищаем Search State перед новым поиском
+        CURRENT_SEARCH_STATE.clear()
+
+        # Запускаем одноразовый Search Agent
+        search_result = await search_agent.ainvoke({ # type: ignore
+            "search_query": state["user_query"],
+            "messages": get_chat_messages(chat_id=state["chat_id"]),
+            "iteration_count": 0,
+            "max_iterations": MAX_ITERATIONS,
+            "search_history": [],  # Пустые каждый раз
+            "accumulated_results": [],  # Пустые каждый раз
+            "search_list": [],  # Пустая хронология
+            "action": "",
+            "reasoning": "",
+            "search_request": {},
+            "final_answer": ""
+        })
+
+        print(f"✅ Search Agent вернул ответ")
+
+        # Сохраняем в историю в формате messages для LLM
+        result = {
+            "messages": [{"role": "assistant", "content": search_result["final_answer"]}]
+        }
+
+        # Обновляем Chat State для dashboard
+        # Важно: берем полную историю из state (включая старые записи)
+        full_messages = state.get('messages', []) + result['messages']
+
+        CURRENT_CHAT_STATE.clear()
+        CURRENT_CHAT_STATE.update({
+            "user_query": state["user_query"],
+            "chat_id": state["chat_id"],
+            "messages": full_messages,
+            "messages_count": len(full_messages)
+        })
+
+        print(f"✅ Dashboard обновлен. Всего сообщений: {len(full_messages)}")
+
+        return result
+
+    # Единственная нода - запуск поиска
+    workflow.add_node("search", run_search)  # type: ignore
+    workflow.set_entry_point("search")
+    workflow.add_edge("search", END)
+
+    # save config
     memory = MemorySaver()
     return workflow.compile(checkpointer=memory)
 
 
-# Global agent
-agent = build_graph()
+
+# ============================================================
+# Global agents
+# ============================================================
+search_agent = build_search_agent()  # Одноразовый
+agent = build_chat_agent()  # Главный агент с памятью
+
+
+# ============================================================
+# Хелпер для получения messages в формате для LLM
+# ============================================================
+def get_chat_messages(chat_id: int) -> List[dict]:
+    """
+    Получить историю сообщений для отправки в LLM
+
+    Returns: [
+        {"role": "user", "content": "..."},
+        {"role": "assistant", "content": "..."},
+        ...
+    ]
+    """
+    return CURRENT_CHAT_STATE.get('messages', [])
 

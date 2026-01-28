@@ -6,9 +6,9 @@ Architecture:
 2. Semantic Filters → find relevant content (expensive)
 3. Post-processing → score filtering, field selection, sorting
 """
-from typing import List, Any
+from typing import List, Any, Dict
 from datetime import datetime
-from app.models import SearchFilter, ChunkResult
+from app.models import SearchFilter
 from app.database.vector_db import get_vector_db
 from app.database.main_db import get_main_db
 from app.embeddings.openai_embeddings import get_embedding_service
@@ -35,7 +35,7 @@ class SearchEngine:
                min_score: float = 0.0,
                fields: List[str] = None,
                sort_by: str = None,
-               sort_order: str = "desc") -> List[ChunkResult]:
+               sort_order: str = "desc") -> List[Dict[str, Any]]:
         try:
             # Если fields не указан, вернуть все доступные поля
             if fields is None:
@@ -115,7 +115,7 @@ class SearchEngine:
                             raise ValueError(f"Field {field} not found in {call_info}")
 
 
-                    result_list.append(ChunkResult(**_dict))
+                    result_list.append(_dict)
 
 
             # Call separated list
@@ -147,20 +147,19 @@ class SearchEngine:
                         else:
                             raise ValueError(f"Field {field} not found in {call_info}")
 
-                    result_list.append(ChunkResult(**_dict))
+                    result_list.append(_dict)
 
     # ------ Step 4: Sorting ---------------
             # Сортировка результатов
             if sort_by == "relevance":
-                print(result_list)
                 # Сортировка по score
-                result_list.sort(key=lambda x: x.score, reverse=(sort_order == "desc"))
+                result_list.sort(key=lambda x: x.get("score", 0), reverse=(sort_order == "desc"))
             elif sort_by == "date":
                 # Сортировка по дате
-                result_list.sort(key=lambda x: x.date if hasattr(x, 'date') and x.date else "", reverse=(sort_order == "desc"))
+                result_list.sort(key=lambda x: x.get("date", ""), reverse=(sort_order == "desc"))
             elif sort_by == "chunk_index":
                 # Сортировка по chunk_index
-                result_list.sort(key=lambda x: x.chunk_index if hasattr(x, 'chunk_index') and x.chunk_index else 0, reverse=(sort_order == "desc"))
+                result_list.sort(key=lambda x: x.get("chunk_index", 0), reverse=(sort_order == "desc"))
             return result_list[:top_k]
 
         except Any as e:

@@ -3,7 +3,7 @@ Pydantic models for API requests and responses
 """
 
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 
 
@@ -48,24 +48,29 @@ class SearchRequest(BaseModel):
 
 class ChunkResult(BaseModel):
     """Single chunk result"""
-    call_id: Optional[str] = None
-    chunk_text: Optional[str] = None
-    score: Optional[float] = None
-    chunk_index: Optional[int] = None
-    date: Optional[str] = None
-    attendants: Optional[List[str]] = None
-    meeting_type: Optional[str] = None
-    timestamp: Optional[str] = None
-    speaker: Optional[str] = None
+    call_id: Optional[str] = Field(default=None)
+    chunk_text: Optional[str] = Field(default=None)
+    score: Optional[float] = Field(default=None)
+    chunk_index: Optional[int] = Field(default=None)
+    date: Optional[str] = Field(default=None)
+    attendants: Optional[List[str]] = Field(default=None)
+    meeting_type: Optional[str] = Field(default=None)
+    timestamp: Optional[str] = Field(default=None)
+    speaker: Optional[str] = Field(default=None)
+    summary: Optional[str] = Field(default=None)
+    full_transcript: Optional[str] = Field(default=None)
 
-    # Allow extra fields
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
+
+    def model_dump(self, **kwargs):
+        """Исключить неустановленные поля при сериализации"""
+        kwargs.setdefault('exclude_unset', True)
+        return super().model_dump(**kwargs)
 
 
 class SearchResponse(BaseModel):
     """Search response with results and metadata"""
-    results: List[ChunkResult]
+    results: List[Dict[str, Any]]
     total_found: int = Field(description="Total results found (before top_k limit)")
     avg_score: float = Field(description="Average relevance score")
     execution_time_ms: int = Field(description="Query execution time in milliseconds")

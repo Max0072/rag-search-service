@@ -15,7 +15,6 @@ from app.models import (
     EmbedRequest,
     EmbedResponse,
     StatsResponse,
-    ChunkResult,
     CreateCallRequest,
     CallResponse,
     CallListResponse
@@ -83,7 +82,7 @@ async def search(request: SearchRequest):
         execution_time = int((time.time() - start_time) * 1000)
 
         # Calculate average score (filter out None values)
-        scores = [r.score for r in results if r.score is not None]
+        scores = [r.get("score") for r in results if r.get("score") is not None]
         avg_score = sum(scores) / len(scores) if scores else 0.0
 
         return SearchResponse(
