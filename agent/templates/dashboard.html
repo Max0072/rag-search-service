@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent State Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: #2d2d30;
+            padding: 15px 20px;
+            border-bottom: 2px solid #007acc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #007acc;
+            font-size: 24px;
+        }
+
+        .status {
+            font-size: 12px;
+            color: #4ec9b0;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid #3e3e42;
+            overflow: hidden;
+        }
+
+        .panel:last-child {
+            border-right: none;
+        }
+
+        .panel-header {
+            background: #252526;
+            padding: 12px 20px;
+            border-bottom: 1px solid #3e3e42;
+            font-weight: 600;
+            color: #4ec9b0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .panel-header .title {
+            font-size: 16px;
+        }
+
+        .panel-header .badge {
+            background: #007acc;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            color: white;
+        }
+
+        .panel-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .state-section {
+            margin-bottom: 25px;
+        }
+
+        .state-section h3 {
+            color: #ce9178;
+            font-size: 14px;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .state-value {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 12px;
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 13px;
+            color: #d4d4d4;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .conversation-item {
+            background: #252526;
+            border-left: 3px solid #007acc;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 8px;
+            max-width: 85%;
+            clear: both;
+        }
+
+        .conversation-item.user {
+            margin-left: auto;
+            margin-right: 0;
+            background: #1e3a4d;
+            border-left: 3px solid #4ec9b0;
+            float: right;
+        }
+
+        .conversation-item.assistant {
+            margin-left: 0;
+            margin-right: auto;
+            background: #2d2d30;
+            border-left: 3px solid #007acc;
+            float: left;
+        }
+
+        .conversation-item .timestamp {
+            color: #858585;
+            font-size: 11px;
+            margin-bottom: 6px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .conversation-item .message-content {
+            color: #d4d4d4;
+            font-size: 13px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+
+        .conversation-item.user .message-content {
+            color: #4ec9b0;
+        }
+
+        .chat-container {
+            display: flow-root;
+        }
+
+        .search-iteration {
+            background: #252526;
+            border-left: 3px solid #ce9178;
+            padding: 12px;
+            margin-bottom: 12px;
+            border-radius: 3px;
+        }
+
+        .search-iteration .iter-number {
+            color: #ce9178;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .search-iteration .params {
+            font-size: 12px;
+            color: #9cdcfe;
+        }
+
+        .empty-state {
+            color: #858585;
+            font-style: italic;
+            text-align: center;
+            padding: 40px 20px;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #424242;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #4e4e4e;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Agent State Dashboard</h1>
+        <div class="status" id="status">🟢 Live</div>
+    </div>
+
+    <div class="container">
+        <!-- Chat Agent Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="title">💬 Chat Agent (Level 1)</span>
+                <span class="badge">Долгоживущий</span>
+            </div>
+            <div class="panel-content" id="chat-state">
+                <div class="empty-state">Загрузка...</div>
+            </div>
+        </div>
+
+        <!-- Search Agent Panel -->
+        <div class="panel">
+            <div class="panel-header">
+                <span class="title">🔍 Search Agent (Level 2)</span>
+                <span class="badge">Одноразовый</span>
+            </div>
+            <div class="panel-content" id="search-state">
+                <div class="empty-state">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatJSON(obj) {
+            return JSON.stringify(obj, null, 2);
+        }
+
+        function renderChatState(state) {
+            if (!state || Object.keys(state).length === 0) {
+                return '<div class="empty-state">Нет данных</div>';
+            }
+
+            let html = '';
+
+            // Messages History (формат чата)
+            if (state.messages && state.messages.length > 0) {
+                html += `
+                    <div class="state-section">
+                        <h3>💬 История диалога (${Math.floor(state.messages.length / 2)} сообщений)</h3>
+                        <div class="chat-container">
+                `;
+                state.messages.forEach((msg, idx) => {
+                    const isUser = msg.role === 'user';
+                    const roleClass = isUser ? 'user' : 'assistant';
+                    const label = isUser ? '👤 User' : '🤖 Assistant';
+                    html += `
+                        <div class="conversation-item ${roleClass}">
+                            <div class="timestamp">${label}</div>
+                            <div class="message-content">${msg.content}</div>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Raw State
+            html += `
+                <div class="state-section">
+                    <h3>🔧 Raw State</h3>
+                    <div class="state-value">${formatJSON(state)}</div>
+                </div>
+            `;
+
+            return html || '<div class="empty-state">Нет данных</div>';
+        }
+
+        function renderSearchState(state) {
+            if (!state || Object.keys(state).length === 0) {
+                return '<div class="empty-state">Нет данных</div>';
+            }
+
+            let html = '';
+
+            // Search List (хронология работы)
+            if (state.search_list && state.search_list.length > 0) {
+                html += `
+                    <div class="state-section">
+                        <h3>🔄 Хронология работы Search Agent (${state.search_list.length} событий)</h3>
+                        <div class="chat-container">
+                `;
+                state.search_list.forEach((item, idx) => {
+                    let label = '';
+                    let emoji = '';
+                    let bgColor = '#2d2d30';
+
+                    if (item.type === 'user_message') {
+                        label = 'User Query';
+                        emoji = '👤';
+                        bgColor = '#1e3a4d';
+                    } else if (item.type === 'model_answer') {
+                        label = 'Model Decision';
+                        emoji = '🧠';
+                        bgColor = '#3a2d4d';
+                    } else if (item.type === 'api_request') {
+                        label = 'API Request';
+                        emoji = '📤';
+                        bgColor = '#4d3a2d';
+                    } else if (item.type === 'search_result') {
+                        label = 'Search Result';
+                        emoji = '📊';
+                        bgColor = '#2d3a30';
+                    } else if (item.type === 'final_answer') {
+                        label = 'Final Answer';
+                        emoji = '✅';
+                        bgColor = '#2d4d3a';
+                    }
+
+                    html += `
+                        <div class="conversation-item" style="margin-left: 0; margin-right: auto; float: none; max-width: 100%; background: ${bgColor};">
+                            <div class="timestamp">${emoji} ${label}</div>
+                            <div class="message-content">${item.content}</div>
+                        </div>
+                    `;
+                });
+                html += `
+                        </div>
+                    </div>
+                `;
+            }
+
+
+            // Search History
+            if (state.search_history && state.search_history.length > 0) {
+                html += `
+                    <div class="state-section">
+                        <h3>📊 История поисков (${state.search_history.length} итераций)</h3>
+                `;
+                state.search_history.forEach((iter, idx) => {
+                    html += `
+                        <div class="search-iteration">
+                            <div class="iter-number">Iteration ${iter.iteration}</div>
+                            <div class="params">Found: ${iter.total_found} | Avg Score: ${iter.avg_score?.toFixed(3) || 'N/A'}</div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+            }
+
+            // Accumulated Results
+            if (state.accumulated_results && state.accumulated_results.length > 0) {
+                html += `
+                    <div class="state-section">
+                        <h3>📦 Накопленные результаты (${state.accumulated_results.length})</h3>
+                        <div class="state-value">${formatJSON(state.accumulated_results.slice(0, 3))}${state.accumulated_results.length > 3 ? '\n\n... еще ' + (state.accumulated_results.length - 3) : ''}</div>
+                    </div>
+                `;
+            }
+
+            // Raw State
+            html += `
+                <div class="state-section">
+                    <h3>🔧 Raw State</h3>
+                    <div class="state-value">${formatJSON(state)}</div>
+                </div>
+            `;
+
+            return html || '<div class="empty-state">Нет данных</div>';
+        }
+
+        async function updateStates() {
+            try {
+                // Fetch Chat State
+                const chatResponse = await fetch('/api/chat_state');
+                const chatState = await chatResponse.json();
+                document.getElementById('chat-state').innerHTML = renderChatState(chatState);
+
+                // Fetch Search State
+                const searchResponse = await fetch('/api/search_state');
+                const searchState = await searchResponse.json();
+                document.getElementById('search-state').innerHTML = renderSearchState(searchState);
+
+                document.getElementById('status').innerHTML = '🟢 Live';
+            } catch (error) {
+                console.error('Error updating states:', error);
+                document.getElementById('status').innerHTML = '🔴 Error';
+            }
+        }
+
+        // Initial load
+        updateStates();
+
+        // Auto-refresh every 2 seconds
+        setInterval(updateStates, 2000);
+    </script>
+</body>
+</html>
