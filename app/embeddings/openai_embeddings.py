@@ -1,5 +1,5 @@
 """
-Embeddings generation using OpenAI
+Embeddings generation using OpenRouter (OpenAI-compatible API)
 """
 
 from typing import List
@@ -10,10 +10,17 @@ settings = get_settings()
 
 
 class EmbeddingService:
-    """Service for generating embeddings"""
+    """Service for generating embeddings via OpenRouter"""
 
     def __init__(self):
-        self.client = OpenAI(api_key=settings.openai_api_key)
+        self.client = OpenAI(
+            base_url=settings.openrouter_base_url,
+            api_key=settings.openrouter_api_key,
+            default_headers={
+                "HTTP-Referer": "https://github.com/yourusername/rag-service",
+                "X-Title": "RAG Service"
+            }
+        )
         self.model = settings.embedding_model
         self.dimension = settings.embedding_dimension
 

@@ -9,8 +9,8 @@ from datetime import datetime
 
 class DateRange(BaseModel):
     """Date range filter"""
-    from_date: str = Field(..., alias="from", description="Start date (YYYY-MM-DD)")
-    to_date: str = Field(..., alias="to", description="End date (YYYY-MM-DD)")
+    from_date: Optional[str] = Field(None, alias="from", description="Start date (YYYY-MM-DD), defaults to earliest")
+    to_date: Optional[str] = Field(None, alias="to", description="End date (YYYY-MM-DD), defaults to today")
 
     class Config:
         populate_by_name = True
@@ -40,7 +40,7 @@ class SearchRequest(BaseModel):
         default=["chunk_text", "call_id", "date", "score"],
         description="Fields to return in results"
     )
-    top_k: int = Field(default=10, ge=1, le=100, description="Number of results")
+    top_k: int = Field(default=10, ge=1, le=2000, description="Number of results")
     min_score: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum relevance score")
     sort_by: Optional[str] = Field(default=None, description="Sort by: relevance, date, chunk_index")
     sort_order: str = Field(default="desc", description="Sort order: desc or asc")

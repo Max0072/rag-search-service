@@ -190,8 +190,11 @@ async def upload_json(request: Request, file: Optional[UploadFile] = File(None))
 
         for i, call_data in enumerate(calls_data, 1):
             try:
-                # Generate call_id if not provided
-                call_id = call_data.get("call_id", f"call-{str(i).zfill(3)}")
+                # Generate call_id if not provided (use timestamp for uniqueness)
+                if "call_id" not in call_data or not call_data["call_id"]:
+                    call_id = f"call-{int(time.time() * 1000)}-{i}"
+                else:
+                    call_id = call_data["call_id"]
 
                 # Transform data to match our schema
                 date_str = call_data.get("date", "")
@@ -220,9 +223,10 @@ async def upload_json(request: Request, file: Optional[UploadFile] = File(None))
             except Exception as e:
                 results["failed"] += 1
                 error_msg = str(e)
+                failed_call_id = call_data.get("call_id", f"call-unknown-{i}")
                 results["errors"].append({
                     "index": i,
-                    "call_id": call_data.get("call_id", f"call-{i}"),
+                    "call_id": failed_call_id,
                     "error": error_msg
                 })
                 print(f"[{i}/{len(calls_data)}] ✗ Failed: {error_msg}")

@@ -7,7 +7,7 @@ Architecture:
 3. Post-processing → score filtering, field selection, sorting
 """
 from typing import List, Any, Dict
-from datetime import datetime
+from datetime import datetime, date
 from app.models import SearchFilter
 from app.database.vector_db import get_vector_db
 from app.database.main_db import get_main_db
@@ -50,10 +50,26 @@ class SearchEngine:
     #         )
     #         call_ids = [call.call_id for call in calls]
 
+            # Обрабатываем date_range с дефолтными значениями
+            date_from = None
+            date_to = None
+            if filter.date_range:
+                # Если from не указан - берем самую раннюю дату (1900-01-01)
+                if filter.date_range.from_date:
+                    date_from = datetime.fromisoformat(filter.date_range.from_date)
+                else:
+                    date_from = datetime(1900, 1, 1)  # Самая ранняя дата
+
+                # Если to не указан - берем сегодня
+                if filter.date_range.to_date:
+                    date_to = datetime.fromisoformat(filter.date_range.to_date)
+                else:
+                    date_to = datetime.now()
+
             call_ids = self.main_db.get_call_ids(
                         call_ids=filter.call_id,
-                        date_from=filter.date_range.from_date if filter.date_range else None,
-                        date_to=filter.date_range.to_date if filter.date_range else None,
+                        date_from=date_from,
+                        date_to=date_to,
                         attendants=filter.attendants,
             )
             # Если нет подходящих звонков - вернуть пустой результат

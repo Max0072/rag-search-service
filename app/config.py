@@ -10,8 +10,11 @@ class Settings(BaseSettings):
     """Application settings"""
 
     # API Keys
-    openai_api_key: str
+    openrouter_api_key: str
     pinecone_api_key: str
+
+    # OpenRouter settings
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
     # Pinecone settings
     pinecone_cloud: str = "aws"
@@ -20,7 +23,7 @@ class Settings(BaseSettings):
     pinecone_summaries_index_name: str = "conference-summaries"
 
     # Embedding settings
-    embedding_model: str = "text-embedding-3-large"
+    embedding_model: str = "openai/text-embedding-3-large"
     embedding_dimension: int = 1536
 
     # Metadata Database (PostgreSQL)

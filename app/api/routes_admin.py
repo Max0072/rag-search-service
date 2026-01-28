@@ -466,38 +466,7 @@ async def delete_call(call_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to delete call: {str(e)}")
 
 
-@admin_router.post("/admin/init-db", status_code=200)
-async def initialize_database():
-    """
-    Initialize database tables
-
-    Creates all necessary tables in PostgreSQL if they don't exist.
-    Safe to run multiple times - will not affect existing data.
-
-    **Returns:**
-    - Success message with created tables
-    """
-    try:
-        main_db = get_main_db()
-
-        # Initialize database (creates tables if they don't exist)
-        main_db.init_db()
-
-        # Get stats to verify
-        stats = main_db.get_stats()
-
-        return {
-            "message": "Database initialized successfully",
-            "tables_created": ["calls"],
-            "total_calls": stats.get("total_calls", 0),
-            "status": "ready"
-        }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to initialize database: {str(e)}")
-
-
-@admin_router.post("/admin/init-db", status_code=200)
+@admin_router.post("/init-db", status_code=200)
 async def initialize_database():
     """
     Initialize database tables
@@ -529,7 +498,7 @@ async def initialize_database():
 
 
 
-@admin_router.delete("/admin/clear-all", status_code=200)
+@admin_router.delete("/clear-all", status_code=200)
 async def clear_all_databases():
     """
     Clear all databases (PostgreSQL and Pinecone)
