@@ -1,0 +1,584 @@
+{
+  "name": "Telegram RAG Agent (Claude + Smart Loop)",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "// Initialize context with first search results\nconst input = $input.item.json;\n\nconst firstResults = input.results || [];\nconst totalFound = input.total_found || 0;\nconst avgScore = input.avg_score || 0;\n\n\n// Initialize search history\nconst searchHistory = [{\n  iteration: 1,\n  reasoning: $('Parse Claude Response1').first().json.reasoning,\n  search_params: $('Parse Claude Response1').first().json.search_request,\n  total_found: totalFound,\n  avg_score: avgScore\n}];\n\n\nreturn {\n  json: {\n    iteration_count: 1,\n    max_iterations: 5,\n    \n    search_history: searchHistory,\n    \n    accumulated_results: firstResults,\n\n  }\n};"
+      },
+      "id": "2d9595ee-78e7-42e8-b803-168e4f8d819a",
+      "name": "Initialize Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop Manager\nconst input = $input.item.json;\n\n// Increment iteration\nconst nextIteration = input.iteration_count + 1;\nconst shouldContinue = nextIteration <= input.max_iterations;\n\nreturn {\n  json: {\n    iteration_count: nextIteration,\n    should_continue: shouldContinue,\n\n    search_history: input.search_history,\n    accumulated_results: input.accumulated_results,\n\n    max_iterations: input.max_iterations,\n    user_query: $('Code in JavaScript1').first().json.user_query,\n    chat_id: $('Code in JavaScript1').first().json.chat_id,\n    current_date: $('Code in JavaScript1').first().json.current_date\n  }\n};"
+      },
+      "id": "72b7ccc6-9dcf-4270-a310-3a881d3a2edb",
+      "name": "Loop Manager",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ `claude-3-opus-20240229` }}"
+            },
+            {
+              "name": "max_tokens",
+              "value": "={{ 4096 }}"
+            },
+            {
+              "name": "system",
+              "value": "={{ `Ты — эксперт по итеративному поиску в RAG системе по транскриптам конференций. \nТвоя задача — анализировать ход предыдущих поисков и решать, нужно ли выполнять дополнительный поиск (action: search) или информации уже достаточно (action: answer).\n\n============================================================\nОСНОВНАЯ ЛОГИКА ПРИНЯТИЯ РЕШЕНИЙ (search vs answer)\n============================================================\n\nДоступные действия:\n1. action: search  — выполнить дополнительный поиск\n2. action: answer — информации достаточно, можно формировать итоговый ответ\n\nКогда делать search:\n- Если в первом поиске (summaries) найдены релевантные звонки (score > 0.3-0.4) — делай детальный поиск через chunks.\n- Если действительно не хватает критической информации.\n- Если найден хотя бы один релевантный звонок и требуется уточнение деталей.\n- Если chunks-поиск может улучшить понимание ответа (поиск технических деталей, аргументов, цитат).\n\nКогда делать answer:\n- Накоплено ≥ 3 релевантных результатов (score > 0.4)\n- Первый поиск ничего не нашёл\n- Информации достаточно, а именно:\n  * есть фрагменты (chunks), полностью раскрывающие вопрос\n  * есть summary или transcript, содержащий прямой или косвенный ответ\n  * ключевые аспекты вопроса уже покрыты\n  * новые результаты дублируют старые или имеют низкий score\n- Нет оснований ожидать, что дополнительный поиск даст новую важную информацию\n\n\n============================================================\nRAG SEARCH API — ПОЛНЫЙ СПРАВОЧНИК\n============================================================\n\n# Search API Guide for Iterative RAG Agent\n\n## Overview\n\nThis API provides unified search capabilities for conference call transcripts with hybrid search (semantic + metadata filtering). Designed for iterative RAG agents that need to progressively refine queries and gather context.\n\nBase URL: http://localhost:8000/api/v1\n\n---\n\n## Core Concepts\n\n### Two-Level Search Strategy\n\n1. Summary-level search - Fast overview, find relevant calls\n2. Chunk-level search - Detailed exploration within specific calls\n\n### Available Fields\n\nAvailable fields you may request in \"fields\":\n\ncall_id: Unique call identifier\ndate: Call date (ISO format)\nattendants: List of participants\nmeeting_type: Type of meeting\nsummary: Full summary text (for summary search)\nfull_transcript: Complete transcript (for any search)\nchunk_text: Chunk content (for chunk search)\nchunk_index: Position in transcript\nscore: Relevance score (0.0-1.0)\n\n\n---\n\n## Iteration 1: Overview Search (Summaries)\n\nGoal: Find which calls are relevant to the user's question.\n\nRequest Pattern:\n\nPOST /search\nContent-Type: application/json\n\n{\n  \"filter\": {\n    \"summaries\": \"notification system architecture WebSocket SSE\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"date\", \"attendants\", \"meeting_type\", \"score\"],\n  \"top_k\": 5\n}\n\nWhen to Use:\n- Initial exploration\n- Broad questions like: \"What was discussed about X?\"\n- Finding relevant meetings\n- Understanding context across multiple calls\n\nInterpretation of scores:\n- High score (0.6+): Very relevant\n- Medium score (0.4-0.6): Possibly relevant\n- Low score (<0.4): Weak relevance\n\n---\n\n## Iteration 2: Detailed Search (Chunks)\n\nGoal: Find specific details, quotes, or technical information.\n\nRequest Pattern:\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-005\"],\n    \"chunks\": \"SSE WebSocket decision reasoning trade-offs\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"score\", \"date\"],\n  \"top_k\": 10\n}\n\nWhen to Use:\n- Need specific quotes or technical reasoning\n- Understanding decisions in depth\n- Looking for arguments, pros/cons, or detailed steps\n\n---\n\n## Iteration 3: Get Full Context\n\nGoal: Retrieve complete transcript or summary for final answer synthesis.\n\nOption A:\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-005\"],\n    \"summaries\": \"notification system\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"full_transcript\", \"date\"],\n  \"top_k\": 1\n}\n\nOption B (batch fetch):\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-001\", \"call-002\", \"call-005\"]\n  },\n  \"fields\": [\"call_id\", \"summary\", \"full_transcript\", \"date\", \"attendants\"],\n  \"top_k\": 10\n}\n\nNote: metadata-only queries return score = null.\n\n---\n\n## Common Search Patterns\n\nPattern 1: Who said what?\n\n{\n  \"filter\": {\n    \"attendants\": [\"Max\", \"Savva\"],\n    \"chunks\": \"Max Savva backend API progress\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"attendants\", \"date\"],\n  \"top_k\": 5\n}\n\nPattern 2: Time-based search:\n\n{\n  \"filter\": {\n    \"date_range\": {\"from\": \"2025-10-01\", \"to\": \"2025-10-31\"},\n    \"chunks\": \"security vulnerabilities SQL injection\"\n  },\n  \"top_k\": 10\n}\n\nPattern 3: Technical deep dive:\n\n{\n  \"filter\": {\n    \"meeting_type\": \"architecture_review\",\n    \"chunks\": \"WebSocket SSE comparison pros cons\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"full_transcript\", \"score\"],\n  \"top_k\": 5\n}\n\nPattern 4: Cross-call analysis:\n\n{\n  \"filter\": {\n    \"summaries\": \"database performance optimization\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"date\", \"meeting_type\", \"score\"],\n  \"top_k\": 10\n}\n\n---\n\n## Filter Reference\n\nMetadata filters (fast):\n\ncall_id: single or list\ndate: specific date\ndate_range: {\"from\": \"...\", \"to\": \"...\"}\nattendants: [\"names\"]\nmeeting_type: string\nspeaker: string\n\nSemantic filters:\n\nchunks: semantic query for detailed search\nsummaries: semantic query for broad search\n\nImportant: Cannot use chunks and summaries together.\n\nKeyword filters:\n\ncontains: \"keyword\" or [\"k1\", \"k2\"]\nnot_contains: [\"bad\", \"obsolete\"]\n\n---\n\n## Sorting & Filtering\n\nsort_by:\n- null\n- relevance\n- date\n- chunk_index\n\nsort_order:\n- asc\n- desc\n\nScore filtering example:\n\n{\n  \"min_score\": 0.5,\n  \"top_k\": 10\n}\n\n---\n\n## Decision Tree for Agent\n\nUser question\n  ├─ Broad → summaries\n  │    ├─ high score → answer\n  │    └─ low/medium → chunk search\n  ├─ Specific → chunks\n  │    ├─ known call ids → narrow search\n  │    └─ unknown → search summaries first\n  └─ Metadata → metadata filters only\n\n---\n\n## Multi-iteration Example\n\nUser: \"Why was SSE chosen over WebSockets?\"\n\nIteration 1:\nSummaries search → find call-005\n\nIteration 2:\nChunk search inside call-005 → find reasoning\n\nIteration 3:\nFetch full transcript if needed → answer\n\n---\n\n## Best Practices\n\nDO:\n- Start broad then narrow\n- Filter by call_id after iteration 1\n- Request minimal necessary fields\n- Use full_transcript only at the end\n- Adjust top_k based on stage\n\nDON'T:\n- Don't mix summaries and chunks\n- Don't ignore low relevance scores\n- Don't request huge transcripts early\n- Don't search all calls every time\n\n---\n\n## Performance Tips\n\nFast:\n- Simple metadata filters\n- Summaries search on few calls\n- Chunk search on filtered calls\n\nSlow:\n- Chunk search across all calls\n- Large top_k values\n- Complex semantic prompts\n\n---\n\n## Error Handling\n\n422 Validation Error → request formatting issue  \n500 Server Error → check server logs\n\nRecovery:\n- If no results → broaden search\n- If too many → increase min_score\n- If weak relevance → refine chunks query\n\n---\n\n## API Endpoints\n\nGET /health  \nGET /stats  \nGET /calls  \nGET /calls/{id}\n\n---\n\n## Conclusion\n\nThis API is designed for iterative refinement:\n1. Explore with summaries\n2. Deep-dive with chunks\n3. Synthesize with full transcript\n\nUse metadata to narrow scope before semantic search. Request only required fields.\n\n\n============================================================\nФОРМАТ ВЫХОДА (ОБЯЗАТЕЛЬНО)\n============================================================\n\nВерни СТРОГО JSON:\n\n{\n  \"action\": \"search\" или \"answer\",\n  \"reasoning\": \"почему принято такое решение\",\n  \"search_request\": {\n    \"filter\": {\n      \"call_id\": [\"список ID\"],\n      \"chunks\": \"детальный поисковый запрос\",\n      \"date_range\": {\"from\": \"YYYY-MM-DD\", \"to\": \"YYYY-MM-DD\"},\n      \"attendants\": [\"по необходимости\"]\n    },\n    \"fields\": [\"call_id\", \"chunk_text\", \"date\", \"score\"],\n    \"top_k\": 15\n  }\n}\n\nЕсли action = \"answer\", поле \"search_request\" можно опустить или поставить null.\n\nТОЛЬКО JSON!` }}"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\n  role: \"user\",\n  content:\n    \"Запрос пользователя: \" + $json.user_query +\n    \"\\n\\nИтерация: \" + $json.iteration_count + \"/\" + $json.max_iterations +\n    \"\\n\\n=== РЕЗУЛЬТАТЫ ПРЕДЫДУЩИХ ПОИСКОВ ===\\n\\nИстория:\\n\" +\n    JSON.stringify($json.search_history ?? [], null, 2) +\n    \"\\n\\nНакоплено результатов: \" + ($json.accumulated_results ?? []).length +\n    \"\\n\\nЛучшие результаты (топ-3):\\n\" +\n    JSON.stringify(\n      ($json.accumulated_results ?? [])\n        .slice(0, 3)\n        .map(r => ({\n          call_id: r.call_id,\n          score: r.score,\n          summary_preview: (r.summary || r.chunk_text || \"\").substring(0, 150)\n        })),\n      null,\n      2\n    ) +\n    \"\\n\\n=== ВОПРОС ===\\n\\n\" +\n    \"Что делать дальше: search (детальный поиск по найденным звонкам) или answer (достаточно информации)?\\n\\n\" +\n    \"Верни JSON с action и search_request (если action=search). Не используй специальных символов в json, чтобы все можно было прочитать\"\n}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b2f1cc2b-b8bd-4762-b5bf-94b0d20358d1",
+      "name": "Claude: Evaluate & Decide",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        976,
+        64
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "C8HqoQvWIgNa7Ubf",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Берём ответ от предыдущей ноды (Anthropic)\nconst response = $input.item.json;\n\n// Пытаемся достать текст из контента\nlet content = response.content?.[0]?.text || \"{}\";\n\n// 1) Убираем обёртки типа ```json ... ```\ncontent = content.replace(/```[a-zA-Z]*\\s*([\\s\\S]*?)```/g, \"$1\");\n\n// 2) Убираем ВСЕ управляющие символы (включая \\n, \\r, \\t)\n// Это сделает JSON \"однострочным\", но зато парсер не сломается\ncontent = content.replace(/[\\u0000-\\u001F\\u007F]/g, \"\");\n\n// 3) Пытаемся распарсить\nlet decision;\n\ntry {\n  decision = JSON.parse(content);\n} catch (e) {\n  // Если модель вернула текст вокруг JSON — попробуем вырезать первую \"{\"...\"}\"\n  const jsonMatch = content.match(/\\{[\\s\\S]*\\}/);\n  if (jsonMatch) {\n    const safeMatch = jsonMatch[0].replace(/[\\u0000-\\u001F\\u007F]/g, \"\");\n    try {\n      decision = JSON.parse(safeMatch);\n    } catch (e2) {\n      throw new Error(\"Could not parse JSON after cleaning: \" + safeMatch);\n    }\n  } else {\n    throw new Error(\"Could not find JSON object in content: \" + content);\n  }\n}\n\n// 4) Валидация action\nif (![\"search\", \"answer\"].includes(decision.action)) {\n  throw new Error(\"Invalid action: \" + decision.action);\n}\n\n// 5) Возвращаем нормализованный результат\nreturn {\n  json: {\n    action: decision.action,\n    reasoning: decision.reasoning || null,\n    search_request: decision.search_request || null,\n  },\n};"
+      },
+      "id": "8a08d485-281f-438d-8951-23706796b2f7",
+      "name": "Parse Decision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "action-is-search",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "search",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d53abc87-ae8b-4648-bea2-b3c7d2026631",
+      "name": "Should Continue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1392,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ragservice-production-f1b3.up.railway.app/api/v1/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.search_request) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f15f8157-ebf3-4c8c-8da1-f7162e3f1709",
+      "name": "Call Next Search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1632,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Update context with new results\nconst input = $input.item.json;\n\nconst newResults = input.results || [];\nconst totalFound = input.total_found || 0;\nconst avgScore = input.avg_score || 0;\n\nconst searchHistory = $('Loop Manager').first().json.search_history || [];\nconst accumulatedResults = $('Loop Manager').first().json.accumulated_results || [];\n\n\n// Add to history\nsearchHistory.push({\n  iteration: $('Loop Manager').first().json.iteration_count,\n  reasoning: $('Parse Decision').first().json.reasoning,\n  search_params: $('Parse Decision').first().json.search_request,\n  total_found: totalFound,\n  avg_score: avgScore\n});\n\n// Accumulate results with deduplication\nconst combined = [...accumulatedResults];\nnewResults.forEach(result => {\n  const identifier = result.chunk_text || result.summary || '';\n  const exists = combined.some(r => {\n    const existingId = r.chunk_text || r.summary || '';\n    return r.call_id === result.call_id && existingId === identifier;\n  });\n  if (!exists) {\n    combined.push(result);\n  }\n});\n\n// Update found_call_ids\nconst foundCallIds = combined\n  .filter(r => r.score > 0.4)\n  .map(r => r.call_id)\n  .filter((id, index, self) => self.indexOf(id) === index);\n\nreturn {\n  json: {\n\n    iteration_count: $('Loop Manager').first().json.iteration_count,     // done\n    max_iterations: $('Initialize Context').first().json.max_iterations, // done\n\n    \n    search_history: searchHistory,\n    accumulated_results: combined,\n  }\n};"
+      },
+      "id": "69b1f9cc-5084-4e7d-8c3b-4b70f606b6e4",
+      "name": "Update Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1856,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "id": "6f7b179f-d5b4-4e0f-83c6-475ea67c74a0",
+      "name": "Telegram Trigger2",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -752,
+        208
+      ],
+      "webhookId": "YOUR_TELEGRAM_BOT_WEBHOOK_ID",
+      "credentials": {
+        "telegramApi": {
+          "id": "rA8wh50bAgrqypLY",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chat_id }}",
+        "text": "🔍 Анализирую ваш запрос и ищу информацию...",
+        "additionalFields": {}
+      },
+      "id": "a5158e80-e881-44d1-97ce-5410f828bc21",
+      "name": "Send Processing2",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        -352,
+        208
+      ],
+      "webhookId": "b27299d9-c631-4bf8-8f33-d0acd1bbfe25",
+      "credentials": {
+        "telegramApi": {
+          "id": "rA8wh50bAgrqypLY",
+          "name": "Telegram account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ `claude-3-opus-20240229` }}"
+            },
+            {
+              "name": "max_tokens",
+              "value": "={{ 4096 }}"
+            },
+            {
+              "name": "system",
+              "value": "={{ `\nТы - эксперт по работе с RAG API для поиска информации в транскриптах конференций.\n\nТвоя задача: проанализировать запрос пользователя и сформировать параметры для search API.\n\nRAG Search API endpoint: https://ragservice-production-f1b3.up.railway.app/api/v1/search\n\n============================================================\nRAG SEARCH API — ПОЛНЫЙ СПРАВОЧНИК\n============================================================\n\n# Search API Guide for Iterative RAG Agent\n\n## Overview\n\nThis API provides unified search capabilities for conference call transcripts with hybrid search (semantic + metadata filtering). Designed for iterative RAG agents that need to progressively refine queries and gather context.\n\nBase URL: http://localhost:8000/api/v1\n\n---\n\n## Core Concepts\n\n### Two-Level Search Strategy\n\n1. Summary-level search - Fast overview, find relevant calls\n2. Chunk-level search - Detailed exploration within specific calls\n\n### Available Fields\n\nAvailable fields you may request in \"fields\":\n\ncall_id: Unique call identifier\ndate: Call date (ISO format)\nattendants: List of participants\nmeeting_type: Type of meeting\nsummary: Full summary text (for summary search)\nfull_transcript: Complete transcript (for any search)\nchunk_text: Chunk content (for chunk search)\nchunk_index: Position in transcript\nscore: Relevance score (0.0-1.0)\n\n\n---\n\n## Iteration 1: Overview Search (Summaries)\n\nGoal: Find which calls are relevant to the user's question.\n\nRequest Pattern:\n\nPOST /search\nContent-Type: application/json\n\n{\n  \"filter\": {\n    \"summaries\": \"notification system architecture WebSocket SSE\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"date\", \"attendants\", \"meeting_type\", \"score\"],\n  \"top_k\": 5\n}\n\nWhen to Use:\n- Initial exploration\n- Broad questions like: \"What was discussed about X?\"\n- Finding relevant meetings\n- Understanding context across multiple calls\n\nInterpretation of scores:\n- High score (0.6+): Very relevant\n- Medium score (0.4-0.6): Possibly relevant\n- Low score (<0.4): Weak relevance\n\n---\n\n## Iteration 2: Detailed Search (Chunks)\n\nGoal: Find specific details, quotes, or technical information.\n\nRequest Pattern:\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-005\"],\n    \"chunks\": \"SSE WebSocket decision reasoning trade-offs\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"score\", \"date\"],\n  \"top_k\": 10\n}\n\nWhen to Use:\n- Need specific quotes or technical reasoning\n- Understanding decisions in depth\n- Looking for arguments, pros/cons, or detailed steps\n\n---\n\n## Iteration 3: Get Full Context\n\nGoal: Retrieve complete transcript or summary for final answer synthesis.\n\nOption A:\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-005\"],\n    \"summaries\": \"notification system\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"full_transcript\", \"date\"],\n  \"top_k\": 1\n}\n\nOption B (batch fetch):\n\nPOST /search\n{\n  \"filter\": {\n    \"call_id\": [\"call-001\", \"call-002\", \"call-005\"]\n  },\n  \"fields\": [\"call_id\", \"summary\", \"full_transcript\", \"date\", \"attendants\"],\n  \"top_k\": 10\n}\n\nNote: metadata-only queries return score = null.\n\n---\n\n## Common Search Patterns\n\nPattern 1: Who said what?\n\n{\n  \"filter\": {\n    \"attendants\": [\"Max\", \"Savva\"],\n    \"chunks\": \"Max Savva backend API progress\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"attendants\", \"date\"],\n  \"top_k\": 5\n}\n\nPattern 2: Time-based search:\n\n{\n  \"filter\": {\n    \"date_range\": {\"from\": \"2025-10-01\", \"to\": \"2025-10-31\"},\n    \"chunks\": \"security vulnerabilities SQL injection\"\n  },\n  \"top_k\": 10\n}\n\nPattern 3: Technical deep dive:\n\n{\n  \"filter\": {\n    \"meeting_type\": \"architecture_review\",\n    \"chunks\": \"WebSocket SSE comparison pros cons\"\n  },\n  \"fields\": [\"call_id\", \"chunk_text\", \"full_transcript\", \"score\"],\n  \"top_k\": 5\n}\n\nPattern 4: Cross-call analysis:\n\n{\n  \"filter\": {\n    \"summaries\": \"database performance optimization\"\n  },\n  \"fields\": [\"call_id\", \"summary\", \"date\", \"meeting_type\", \"score\"],\n  \"top_k\": 10\n}\n\n---\n\n## Filter Reference\n\nMetadata filters (fast):\n\ncall_id: single or list\ndate: specific date\ndate_range: {\"from\": \"...\", \"to\": \"...\"}\nattendants: [\"names\"]\nmeeting_type: string\nspeaker: string\n\nSemantic filters:\n\nchunks: semantic query for detailed search\nsummaries: semantic query for broad search\n\nImportant: Cannot use chunks and summaries together.\n\nKeyword filters:\n\ncontains: \"keyword\" or [\"k1\", \"k2\"]\nnot_contains: [\"bad\", \"obsolete\"]\n\n---\n\n## Sorting & Filtering\n\nsort_by:\n- null\n- relevance\n- date\n- chunk_index\n\nsort_order:\n- asc\n- desc\n\nScore filtering example:\n\n{\n  \"min_score\": 0.5,\n  \"top_k\": 10\n}\n\n---\n\n## Decision Tree for Agent\n\nUser question\n  ├─ Broad → summaries\n  │    ├─ high score → answer\n  │    └─ low/medium → chunk search\n  ├─ Specific → chunks\n  │    ├─ known call ids → narrow search\n  │    └─ unknown → search summaries first\n  └─ Metadata → metadata filters only\n\n---\n\n## Multi-iteration Example\n\nUser: \"Why was SSE chosen over WebSockets?\"\n\nIteration 1:\nSummaries search → find call-005\n\nIteration 2:\nChunk search inside call-005 → find reasoning\n\nIteration 3:\nFetch full transcript if needed → answer\n\n---\n\n## Best Practices\n\nDO:\n- Start broad then narrow\n- Filter by call_id after iteration 1\n- Request minimal necessary fields\n- Use full_transcript only at the end\n- Adjust top_k based on stage\n\nDON'T:\n- Don't mix summaries and chunks\n- Don't ignore low relevance scores\n- Don't request huge transcripts early\n- Don't search all calls every time\n\n---\n\n## Performance Tips\n\nFast:\n- Simple metadata filters\n- Summaries search on few calls\n- Chunk search on filtered calls\n\nSlow:\n- Chunk search across all calls\n- Large top_k values\n- Complex semantic prompts\n\n---\n\n## Error Handling\n\n422 Validation Error → request formatting issue  \n500 Server Error → check server logs\n\nRecovery:\n- If no results → broaden search\n- If too many → increase min_score\n- If weak relevance → refine chunks query\n\n---\n\n## API Endpoints\n\nGET /health  \nGET /stats  \nGET /calls  \nGET /calls/{id}\n\n---\n\n## Conclusion\n\nThis API is designed for iterative refinement:\n1. Explore with summaries\n2. Deep-dive with chunks\n3. Synthesize with full transcript\n\nUse metadata to narrow scope before semantic search. Request only required fields. \n\n\n============================================================\nФОРМАТ ВЫХОДА (ОБЯЗАТЕЛЬНО)\n============================================================\n\nВерни СТРОГО JSON:\n\n{\n  \"action\": \"search\" или \"answer\",\n  \"reasoning\": \"почему принято такое решение\",\n  \"search_request\": {\n    \"filter\": {\n      \"call_id\": [\"список ID\"],\n      \"chunks\": \"детальный поисковый запрос\",\n      \"date_range\": {\"from\": \"YYYY-MM-DD\", \"to\": \"YYYY-MM-DD\"},\n      \"attendants\": [\"по необходимости\"]\n    },\n    \"fields\": [\"call_id\", \"chunk_text\", \"date\", \"score\"],\n    \"top_k\": 15\n  }\n}\n\nТОЛЬКО JSON БЕЗ ДОПОЛНИТЕЛЬНОГО ТЕКСТА!\n` }}\n"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\"role\": \"user\", \"content\": \"Запрос пользователя: \" + $('Code in JavaScript1').item.json.user_query + \"\\n\\nТекущая дата: \" + $('Code in JavaScript1').item.json.current_date + \"\\n\\nСформируй параметры для поиска в формате JSON.\"}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b14e83ba-5169-4ade-a95a-8f901a4fbf0e",
+      "name": "Claude: Plan Search1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -112,
+        208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "C8HqoQvWIgNa7Ubf",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse Claude response\nconst response = $input.item.json;\nconst content = response.content?.[0]?.text || '{}';\n\n// Extract JSON from Claude's response\nlet searchParams;\ntry {\n  // Try to parse directly\n  searchParams = JSON.parse(content);\n} catch (e) {\n  // If failed, try to extract JSON from markdown code blocks\n  const jsonMatch = content.match(/```json\\s*([\\s\\S]*?)```/) || content.match(/```\\s*([\\s\\S]*?)```/);\n  if (jsonMatch) {\n    searchParams = JSON.parse(jsonMatch[1]);\n  } else {\n    searchParams = JSON.parse(content);\n  }\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    reasoning: searchParams.reasoning,\n    search_request: searchParams.search_request\n  }\n};"
+      },
+      "id": "5de57b8d-89a0-49a2-8273-d46b245f703f",
+      "name": "Parse Claude Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://ragservice-production-f1b3.up.railway.app/api/v1/search",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.search_request) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "9f3d70b7-ec86-4960-9f51-4ae2fe96e8e9",
+      "name": "Call RAG Search API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        320,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "={{ `claude-3-opus-20240229` }}"
+            },
+            {
+              "name": "max_tokens",
+              "value": "={{ 4096 }}"
+            },
+            {
+              "name": "system",
+              "value": "={{`  Ты - ассистент для анализа результатов поиска по транскриптам конференций.\n\n  Твоя задача: сформировать структурированный ответ на основе результатов поиска.\n\n  Правила:\n  1. Используй ТОЛЬКО данные из результатов поиска\n  2. Цитируй источники с указанием call_id и даты\n  3. Пиши на русском языке\n  4. Используй Markdown форматирование\n\n  Если результатов нет или мало - честно скажи об этом.` }}"
+            },
+            {
+              "name": "messages",
+              "value": "={{ [{\"role\": \"user\", \"content\": \"Запрос: \" + $('Loop Manager').item.json.user_query + \"\\n\\nReasoning: \" + ($json.reasoning || \"не указана\") + \n\"\\n\\nИстория поиска: \" + JSON.stringify($('Loop Manager').item.json.accumulated_results) +\n\"\\n\\nСформируй структурированный ответ.\"}] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6c464cc2-9cef-4a31-8f4c-2e6d8eaedab1",
+      "name": "Claude: Generate Answer2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1600,
+        336
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "C8HqoQvWIgNa7Ubf",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract answer from Claude response\nconst response = $input.item.json;\nconst answer = response.content?.[0]?.text || 'Ошибка генерации ответа';\n\nreturn {\n  json: {\n    ...$input.item.json,\n    final_answer: answer\n  }\n};"
+      },
+      "id": "38986bee-60f7-45c5-af6a-96f442fe4fd9",
+      "name": "Extract Answer2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        336
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Code in JavaScript1').item.json.chat_id }}",
+        "text": "={{ $json.final_answer }}",
+        "additionalFields": {
+          "disable_web_page_preview": true,
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "b526d233-6fb6-40a0-a263-0f0c00a07f62",
+      "name": "Send Answer to Telegram1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.1,
+      "position": [
+        1984,
+        336
+      ],
+      "webhookId": "b8f98836-74e4-4da4-9cfc-a5938cb07859",
+      "credentials": {
+        "telegramApi": {
+          "id": "rA8wh50bAgrqypLY",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "  const messageText = $input.item.json.message?.text || '';\n  const chatId = $input.item.json.message?.chat?.id || 0;\n  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD\n\n  return {\n    json: {\n      user_query: messageText,\n      chat_id: chatId,\n      current_date: currentDate\n    }\n  };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        208
+      ],
+      "id": "cf302d76-de21-47f4-bb82-27c230ac12d3",
+      "name": "Code in JavaScript1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Initialize Context": {
+      "main": [
+        [
+          {
+            "node": "Loop Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Manager": {
+      "main": [
+        [
+          {
+            "node": "Claude: Evaluate & Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Evaluate & Decide": {
+      "main": [
+        [
+          {
+            "node": "Parse Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Decision": {
+      "main": [
+        [
+          {
+            "node": "Should Continue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Should Continue?": {
+      "main": [
+        [
+          {
+            "node": "Call Next Search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Claude: Generate Answer2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Next Search": {
+      "main": [
+        [
+          {
+            "node": "Update Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Context": {
+      "main": [
+        [
+          {
+            "node": "Loop Manager",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger2": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Processing2": {
+      "main": [
+        [
+          {
+            "node": "Claude: Plan Search1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Plan Search1": {
+      "main": [
+        [
+          {
+            "node": "Parse Claude Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Claude Response1": {
+      "main": [
+        [
+          {
+            "node": "Call RAG Search API1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call RAG Search API1": {
+      "main": [
+        [
+          {
+            "node": "Initialize Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude: Generate Answer2": {
+      "main": [
+        [
+          {
+            "node": "Extract Answer2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Answer2": {
+      "main": [
+        [
+          {
+            "node": "Send Answer to Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript1": {
+      "main": [
+        [
+          {
+            "node": "Send Processing2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1cbdbbcd-0b04-4e68-80a6-ceb19c4c139e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "06ca52180da486b83d94f38f6cbfa6f107c8a4a603a491e8d6e2a4b542b371f7"
+  },
+  "id": "2BgRVCNQ0mHfAPJG",
+  "tags": []
+}

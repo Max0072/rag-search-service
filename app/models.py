@@ -23,8 +23,6 @@ class SearchFilter(BaseModel):
     date: Optional[str] = Field(None, description="Exact date (YYYY-MM-DD)")
     date_range: Optional[DateRange] = Field(None, description="Date range")
     attendants: Optional[List[str]] = Field(None, description="Attendants (ANY logic)")
-    meeting_type: Optional[str] = Field(None, description="Type of meeting")
-    department: Optional[str] = Field(None, description="Department")
 
     # Semantic filters
     chunks: Optional[str] = Field(None, description="Semantic search in chunks")
@@ -33,9 +31,6 @@ class SearchFilter(BaseModel):
     # Keyword filters
     contains: Optional[str | List[str]] = Field(None, description="Must contain keyword(s)")
     not_contains: Optional[List[str]] = Field(None, description="Must not contain keyword(s)")
-
-    # Advanced filters
-    speaker: Optional[str] = Field(None, description="Specific speaker")
 
 
 class SearchRequest(BaseModel):

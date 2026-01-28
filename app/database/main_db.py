@@ -78,7 +78,6 @@ class MetadataDatabase:
                   date_from: Optional[datetime] = None,
                   date_to: Optional[datetime] = None,
                   attendants: Optional[List[str]] = None,
-                  meeting_type: Optional[str] = None,
                   limit: int = 100,
                   offset: int = 0
                   ) -> List[Call]:
@@ -99,6 +98,34 @@ class MetadataDatabase:
             return query.all()
         finally:
             session.close()
+
+# ------ Get call ids -------------------------------------------------------- done
+    def get_call_ids(self,
+                     call_ids: Optional[List[str]] = None,
+                     date_from: Optional[datetime] = None,
+                     date_to: Optional[datetime] = None,
+                     attendants: Optional[List[str]] = None,
+                     limit: int = 100,
+                     offset: int = 0
+                     ) -> List[str]:
+        session = self.get_session()
+        try:
+            query = session.query(Call.call_id)  # Только ID!
+            if call_ids:
+                query = query.filter(Call.call_id.in_(call_ids))
+            if date_from:
+                query = query.filter(Call.date >= date_from)
+            if date_to:
+                query = query.filter(Call.date <= date_to)
+            if attendants:
+                attendant_filters = [Call.attendants.contains([name]) for name in attendants]
+                query = query.filter(or_(*attendant_filters))
+            query = query.limit(limit).offset(offset)
+            return [row.call_id for row in query.all()]
+        finally:
+            session.close()
+
+
 
 # ------ Update call  -------------------------------------------------------- done
     def update_call(self, call_id: str, **kwargs) -> Optional[Call]:

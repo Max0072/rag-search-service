@@ -9,6 +9,7 @@ from app.api.routes_prod import router
 from app.api.routes_admin import admin_router
 from app import __version__
 
+
 # Create FastAPI app
 app = FastAPI(
     title="Conference Call Search API",
