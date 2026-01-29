@@ -47,7 +47,6 @@ app.add_middleware(
 app.include_router(router, prefix="")
 app.include_router(admin_router, prefix="/admin")
 
-
 # Root endpoint
 @app.get("/")
 async def root():
