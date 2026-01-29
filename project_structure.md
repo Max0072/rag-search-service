@@ -30,15 +30,15 @@ rag_service/
 │   ├── data_manager.py               # Менеджер синхронизации между БД
 │   └── models.py                     # Pydantic модели для API requests/responses
 │
-├── local/                            # Локальная разработка с Docker
-│   ├── docker-compose.local.yml      # Docker Compose для локальной разработки
-│   │                                 # (PostgreSQL + API сервис)
-│   ├── .env.local                    # Переменные окружения для Docker (не в git)
-│   ├── .gitignore                    # Git ignore для local папки
-│   └── README.md                     # Инструкции по локальному запуску
-│
-├── Dockerfile                        # Docker образ для Railway деплоя
-├── requirements.txt                  # Python зависимости
+├── .env                              # Переменные окружения для Docker (не в git)
+├── .env.example                      # Example of env file
 ├── .dockerignore                     # Исключения для Docker build
 ├── .gitignore                        # Git ignore для проекта
-└── project_structure.md              # Этот файл - структура проекта
+│
+├── docker-compose.yml                # Docker Compose для локальной разработки
+│                                     # (PostgreSQL + API сервис)
+├── Dockerfile                        # Docker образ для Railway деплоя
+├── project_structure.md              # Этот файл - структура проекта
+├── README.md                         # Инструкции по локальному запуску
+└── requirements.txt                  # Python зависимости
+```

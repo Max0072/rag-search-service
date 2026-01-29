@@ -30,7 +30,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - .env.local
+      - .env
     environment:
       # Database (auto-connect to postgres container)
       DATABASE_URL: postgresql://raguser:ragpassword@postgres:5432/conference_db

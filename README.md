@@ -1,64 +1,30 @@
-### 1. Настройте переменные окружения
+## Предварительные требования
 
-Найдите `.env` и заполните необходимые значения:
+1. Docker Desktop установлен и запущен
+2. OpenAI API Key
+3. Pinecone Account
 
-### 2. Запустите с помощью Docker Compose
+
+### 1. Настройка API ключей
+
+Откройте файл `.env` и замените заглушки на реальные ключи
+
+
+### 2. Запуск сервиса
 
 ```bash
+# Из корня директория выполните:
 docker-compose -f docker-compose.yml up --build
 ```
 
-### 3. Проверьте статус
+## 3. Остановка
 
 ```bash
-docker-compose ps
-docker-compose logs -f bot
+# Остановить с сохранением данных
+docker-compose -f docker-compose.yml down
 ```
 
-### 4. Откройте Dashboard
-
-Откройте в браузере: http://localhost:5001
-
-## Команды управления
-
-### Остановить бота
-```bash
-docker-compose down
+```bash 
+# Остановить и удалить все данные (включая PostgreSQL)
+docker-compose -f docker-compose.yml down -v
 ```
-
-### Перезапустить бота
-```bash
-docker-compose restart
-```
-
-### Просмотр логов
-```bash
-docker-compose logs -f bot
-```
-
-### Пересобрать образ после изменений
-```bash
-docker-compose up -d --build
-```
-
-## Запуск через Docker напрямую
-
-Если не хотите использовать Docker Compose:
-
-```bash
-# Собрать образ
-docker build -t telegram-rag-bot .
-
-# Запустить контейнер
-docker run -d \
-  --name telegram-bot \
-  -p 5001:5001 \
-  --env-file .env \
-  telegram-rag-bot
-```
-
-## Требования
-
-- Docker 20.10+
-- Docker Compose 1.29+ (опционально)
-- Файл `.env` с настройками
