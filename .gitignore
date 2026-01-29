@@ -31,7 +31,8 @@ env.bak/
 venv.bak/
 .venv/
 .jbeval/
-
+# Не коммитить файлы с реальными API ключами
+.env.local
 # PyCharm / IntelliJ IDEA
 .idea/
 *.iml

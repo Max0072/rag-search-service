@@ -23,7 +23,7 @@ services:
   # RAG API Service
   api:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     container_name: rag_api_local
     restart: unless-stopped
