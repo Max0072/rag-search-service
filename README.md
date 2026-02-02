@@ -13,8 +13,7 @@
 ### 2. Запуск сервиса
 
 ```bash
-# Из корня директория выполните:
-docker-compose -f docker-compose.yml up --build
+docker-compose up --build -d
 ```
 
 ## 3. Остановка
