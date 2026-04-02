@@ -1,11 +1,11 @@
 """
-Data Manager - синхронизация данных между Vector DB и Metadata DB
+Data Manager - synchronization between Vector DB and Metadata DB
 
-Этот класс обеспечивает:
-- Добавление звонков с автоматическим chunking и индексацией
-- Удаление с очисткой обеих баз данных
-- Обновление с пересозданием chunks
-- Консистентность данных между PostgreSQL и Pinecone
+This class provides:
+- Adding calls with automatic chunking and indexing
+- Deletion with cleanup from both databases
+- Updating with chunk regeneration
+- Data consistency between PostgreSQL and Pinecone
 """
 
 from typing import List, Optional, Dict, Any

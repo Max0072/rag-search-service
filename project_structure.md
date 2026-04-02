@@ -1,44 +1,44 @@
-# Структура проекта RAG Service
+# Project Structure
 
 ```
 rag_service/
 │
-├── app/                              # Основной код приложения
-│   ├── api/                          # API эндпоинты и маршруты
+├── app/                              # Main application code
+│   ├── api/                          # API endpoints and routes
 │   │   ├── __init__.py
-│   │   ├── main.py                   # Инициализация FastAPI приложения
-│   │   │                             # + Startup event для автоинициализации БД
-│   │   ├── routes_prod.py            # Production API routes (search, upload, admin)
-│   │   └── test_routes.py            # Тестовые/debug эндпоинты
+│   │   ├── main.py                   # FastAPI app initialization
+│   │   │                             # + Startup event for auto DB init
+│   │   ├── routes_prod.py            # Production API routes (search, upload)
+│   │   └── routes_admin.py           # Admin/debug endpoints
 │   │
-│   ├── database/                     # Слой работы с базами данных
+│   ├── database/                     # Database layer
 │   │   ├── __init__.py
-│   │   ├── db_models.py              # SQLAlchemy модели для PostgreSQL
-│   │   ├── main_db.py                # Операции с PostgreSQL (metadata DB)
-│   │   └── vector_db.py              # Операции с Pinecone (vector DB)
+│   │   ├── db_models.py              # SQLAlchemy models for PostgreSQL
+│   │   ├── main_db.py                # PostgreSQL operations (metadata DB)
+│   │   └── vector_db.py              # Pinecone operations (vector DB)
 │   │
-│   ├── embeddings/                   # Генерация векторных эмбеддингов
+│   ├── embeddings/                   # Vector embedding generation
 │   │   ├── __init__.py
-│   │   └── openai_embeddings.py      # Сервис генерации эмбеддингов через OpenAI
+│   │   └── openai_embeddings.py      # Embedding service via OpenRouter
 │   │
-│   ├── search/                       # Логика поискового движка
+│   ├── search/                       # Search engine logic
 │   │   ├── __init__.py
-│   │   └── search_engine.py          # 3-ступенчатый pipeline поиска
+│   │   └── search_engine.py          # 3-step search pipeline
 │   │
 │   ├── __init__.py
-│   ├── config.py                     # Настройки приложения (Pydantic Settings)
-│   ├── data_manager.py               # Менеджер синхронизации между БД
-│   └── models.py                     # Pydantic модели для API requests/responses
+│   ├── config.py                     # App settings (Pydantic Settings)
+│   ├── data_manager.py               # Synchronization manager between DBs
+│   └── models.py                     # Pydantic models for API requests/responses
 │
-├── .env                              # Переменные окружения для Docker (не в git)
-├── .env.example                      # Example of env file
-├── .dockerignore                     # Исключения для Docker build
-├── .gitignore                        # Git ignore для проекта
+├── .env                              # Environment variables for Docker (not in git)
+├── .env.example                      # Example env file
+├── .dockerignore                     # Docker build exclusions
+├── .gitignore                        # Git ignore rules
 │
-├── docker-compose.yml                # Docker Compose для локальной разработки
-│                                     # (PostgreSQL + API сервис)
-├── Dockerfile                        # Docker образ для Railway деплоя
-├── project_structure.md              # Этот файл - структура проекта
-├── README.md                         # Инструкции по локальному запуску
-└── requirements.txt                  # Python зависимости
+├── docker-compose.yml                # Docker Compose for local development
+│                                     # (PostgreSQL + API service)
+├── Dockerfile                        # Docker image for deployment
+├── project_structure.md              # This file - project structure
+├── README.md                         # Setup instructions
+└── requirements.txt                  # Python dependencies
 ```
