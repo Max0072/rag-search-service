@@ -58,9 +58,9 @@ async def root():
     }
 
 
- # - allow_origins=["*"] - разрешает запросы с любых доменов
- #    - ⚠️ Небезопасно для production! Любой сайт сможет делать запросы к вашему API
- #    - Для production нужно указать конкретные домены: ["https://yourapp.com", "https://www.yourapp.com"]
- #  - allow_credentials=True - разрешает отправку cookies и авторизационных заголовков
- #  - allow_methods=["*"] - разрешает все HTTP методы (GET, POST, PUT, DELETE и т.д.)
- #  - allow_headers=["*"] - разрешает все HTTP заголовки
+ # - allow_origins=["*"] - allows requests from any domain
+ #    - Unsafe for production! Any website can make requests to your API
+ #    - For production, specify exact domains: ["https://yourapp.com", "https://www.yourapp.com"]
+ # - allow_credentials=True - allows sending cookies and authorization headers
+ # - allow_methods=["*"] - allows all HTTP methods (GET, POST, PUT, DELETE, etc.)
+ # - allow_headers=["*"] - allows all HTTP headers

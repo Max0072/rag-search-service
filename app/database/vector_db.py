@@ -82,7 +82,7 @@ class VectorDatabase:
         """
         index = self.get_index(index_type)
 
-        # Построить фильтр для Pinecone
+        # Build filter for Pinecone
         filter_dict = None
         if call_ids:
             filter_dict = {"call_id": {"$in": call_ids}}

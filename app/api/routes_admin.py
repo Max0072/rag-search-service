@@ -15,7 +15,6 @@ from app.models import (
     EmbedRequest,
     EmbedResponse,
     StatsResponse,
-    ChunkResult,
     CreateCallRequest,
     CallResponse,
     CallListResponse

@@ -31,7 +31,7 @@ env.bak/
 venv.bak/
 .venv/
 .jbeval/
-# Не коммитить файлы с реальными API ключами
+# Do not commit files with real API keys
 .env.local
 # PyCharm / IntelliJ IDEA
 .idea/

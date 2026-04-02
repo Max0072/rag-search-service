@@ -63,7 +63,7 @@ class ChunkResult(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     def model_dump(self, **kwargs):
-        """Исключить неустановленные поля при сериализации"""
+        """Exclude unset fields during serialization"""
         kwargs.setdefault('exclude_unset', True)
         return super().model_dump(**kwargs)
 

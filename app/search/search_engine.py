@@ -37,30 +37,23 @@ class SearchEngine:
                sort_by: str = None,
                sort_order: str = "desc") -> List[Dict[str, Any]]:
         try:
-            # Если fields не указан, вернуть все доступные поля
+            # If fields is not specified, return all available fields
             if fields is None:
                 fields = ["call_id", "date", "attendants", "chunk_text", "chunk_index", "score"]
 
-    # ------ Step 1: Metadata Filtration (найти подходящие звонки) ------------
-    #         calls = self.main_db.get_calls(
-    #                     call_ids=filter.call_id,
-    #                     date_from=filter.date_range.from_date if filter.date_range else None,
-    #                     date_to=filter.date_range.to_date if filter.date_range else None,
-    #                     attendants=filter.attendants,
-    #         )
-    #         call_ids = [call.call_id for call in calls]
+    # ------ Step 1: Metadata Filtration (find matching calls) ----------------
 
-            # Обрабатываем date_range с дефолтными значениями
+            # Process date_range with default values
             date_from = None
             date_to = None
             if filter.date_range:
-                # Если from не указан - берем самую раннюю дату (1900-01-01)
+                # If from is not specified, use the earliest date (1900-01-01)
                 if filter.date_range.from_date:
                     date_from = datetime.fromisoformat(filter.date_range.from_date)
                 else:
-                    date_from = datetime(1900, 1, 1)  # Самая ранняя дата
+                    date_from = datetime(1900, 1, 1)
 
-                # Если to не указан - берем сегодня
+                # If to is not specified, use today
                 if filter.date_range.to_date:
                     date_to = datetime.fromisoformat(filter.date_range.to_date)
                 else:
@@ -72,11 +65,11 @@ class SearchEngine:
                         date_to=date_to,
                         attendants=filter.attendants,
             )
-            # Если нет подходящих звонков - вернуть пустой результат
+            # If no matching calls found, return empty result
             if not call_ids:
                 return []
 
-    # ------ Step 2: Semantic Search (поиск в векторной БД) ------------------------------------
+    # ------ Step 2: Semantic Search (vector DB lookup) ---------------------------------------
             relevant_chunks = []
             relevant_summaries = []
 
@@ -85,21 +78,21 @@ class SearchEngine:
                 raise ValueError("Impossible to find relevant chunks/summaries at the same time")
 
 
-            # Поиск по chunks (если указан фильтр)
+            # Search by chunks (if filter is specified)
             if filter.chunks:
                 relevant_chunks = self.search_by_chunks(filter.chunks, call_ids, top_k, min_score)
             # [{"call_id", "chunk", "score"}, ... ]
                 call_ids = list(set([chunk["call_id"] for chunk in relevant_chunks]))
 
 
-            # Поиск по summaries (если указан фильтр)
+            # Search by summaries (if filter is specified)
             elif filter.summaries:
                 relevant_summaries = self.search_by_summary(filter.summaries, call_ids, top_k, min_score)
             # [{"call_id", "score"}, ... ]
                 call_ids = list(set([summary["call_id"] for summary in relevant_summaries]))
 
-    # ------ Step 3: Post-processing и формирование результатов ---------------
-            # Получить звонки и создать словарь для быстрого доступа к данным звонков
+    # ------ Step 3: Post-processing and building results ---------------------
+            # Fetch calls and build a lookup map for quick access
             calls = self.main_db.get_calls(call_ids=call_ids)
             calls_map = {call.call_id: call for call in calls}
 
@@ -166,19 +159,19 @@ class SearchEngine:
                     result_list.append(_dict)
 
     # ------ Step 4: Sorting ---------------
-            # Сортировка результатов
+            # Sort results
             if sort_by == "relevance":
-                # Сортировка по score
+                # Sort by score
                 result_list.sort(key=lambda x: x.get("score", 0), reverse=(sort_order == "desc"))
             elif sort_by == "date":
-                # Сортировка по дате
+                # Sort by date
                 result_list.sort(key=lambda x: x.get("date", ""), reverse=(sort_order == "desc"))
             elif sort_by == "chunk_index":
-                # Сортировка по chunk_index
+                # Sort by chunk_index
                 result_list.sort(key=lambda x: x.get("chunk_index", 0), reverse=(sort_order == "desc"))
             return result_list[:top_k]
 
-        except Any as e:
+        except Exception as e:
             print(f"Error: {e}")
 
 

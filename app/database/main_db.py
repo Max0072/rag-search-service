@@ -110,7 +110,7 @@ class MetadataDatabase:
                      ) -> List[str]:
         session = self.get_session()
         try:
-            query = session.query(Call.call_id)  # Только ID!
+            query = session.query(Call.call_id)
             if call_ids:
                 query = query.filter(Call.call_id.in_(call_ids))
             if date_from:
