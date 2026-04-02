@@ -5,7 +5,7 @@ A Retrieval-Augmented Generation (RAG) backend for searching and indexing confer
 ## Architecture
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+┌──────────────┐     ┌──────────────┐     ┌─────────────┐
 │   FastAPI    │────▶│  PostgreSQL  │     │  Pinecone   │
 │   (API)      │     │  (metadata)  │     │  (vectors)  │
 └──────┬───────┘     └──────────────┘     └─────────────┘
