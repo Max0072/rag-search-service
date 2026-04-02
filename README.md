@@ -132,7 +132,3 @@ curl -X POST http://localhost:8000/search \
 | `DATABASE_URL`                  | (set in docker-compose)          | PostgreSQL connection string  |
 | `DEFAULT_TOP_K`                 | `10`                             | Default results per query     |
 | `MIN_RELEVANCE_SCORE`           | `0.7`                            | Minimum relevance threshold   |
-
-## License
-
-This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
